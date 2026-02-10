@@ -1,0 +1,5 @@
+{
+  "name": "Gestionnaire d'Emploi du Temps",
+  "description": "Une application professionnelle pour gérer les plannings, absences et astreintes, calquée sur le modèle PDF fourni avec des indicateurs visuels colorés et une interface intuitive.",
+  "requestFramePermissions": []
+}
