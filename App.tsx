@@ -8,15 +8,35 @@ import Legend from './components/Legend';
 import { 
   Printer, RefreshCw, ChevronLeft, ChevronRight, Lock, Unlock, Eye, X, 
   Trash2, Users, BarChart3, Settings2, Plus, Download, Upload, Save, 
-  Cloud, CloudUpload, CloudDownload, Link, CheckCircle2, AlertCircle 
+  Cloud, CloudUpload, CloudDownload, Link, CheckCircle2, AlertCircle, Palette
 } from 'lucide-react';
 
 // ==========================================
 // CONFIGURATION CACHÉE
-// REMPLACEZ L'URL CI-DESSOUS PAR VOTRE URL GOOGLE APPS SCRIPT
+// REMPLACEZ L'URL CI-DESSOUS PAR VOTRE URL GOOGLE APPS SCRIPT RÉELLE
 // ==========================================
-const CLOUD_DATABASE_URL = "https://script.google.com/macros/s/AKfycbzxbs8PkS0FWNOijViL0-uNQfdhZDDubixKwkFm4x4ahx9URy8AlemtkhQ1WdSit92W-w/exec";
+const CLOUD_DATABASE_URL = "https://script.google.com/macros/s/AKfycbwV4N_VOTRE_URL_REELLE_ICI/exec";
 const ADMIN_PASSWORD = "270478";
+
+const PRESET_COLORS = [
+  { bg: 'bg-white', text: 'text-gray-800' },
+  { bg: 'bg-red-500', text: 'text-white' },
+  { bg: 'bg-blue-500', text: 'text-white' },
+  { bg: 'bg-emerald-500', text: 'text-white' },
+  { bg: 'bg-amber-500', text: 'text-white' },
+  { bg: 'bg-indigo-500', text: 'text-white' },
+  { bg: 'bg-violet-500', text: 'text-white' },
+  { bg: 'bg-pink-500', text: 'text-white' },
+  { bg: 'bg-rose-500', text: 'text-white' },
+  { bg: 'bg-cyan-500', text: 'text-white' },
+  { bg: 'bg-lime-500', text: 'text-black' },
+  { bg: 'bg-yellow-300', text: 'text-black' },
+  { bg: 'bg-green-300', text: 'text-black' },
+  { bg: 'bg-blue-300', text: 'text-black' },
+  { bg: 'bg-stone-400', text: 'text-white' },
+  { bg: 'bg-orange-400', text: 'text-white' },
+  { bg: 'bg-slate-200', text: 'text-slate-700' },
+];
 
 const App: React.FC = () => {
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
@@ -36,6 +56,12 @@ const App: React.FC = () => {
   const [passwordInput, setPasswordInput] = useState("");
   const [passwordError, setPasswordError] = useState(false);
   const [newStaffName, setNewStaffName] = useState("");
+  
+  // New Mission States
+  const [newMissionCode, setNewMissionCode] = useState("");
+  const [newMissionLabel, setNewMissionLabel] = useState("");
+  const [newMissionColor, setNewMissionColor] = useState(PRESET_COLORS[0]);
+
   const [isSyncing, setIsSyncing] = useState(false);
   const [cloudStatus, setCloudStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
@@ -55,7 +81,6 @@ const App: React.FC = () => {
   });
 
   const [googleScriptUrl, setGoogleScriptUrl] = useState<string>(() => {
-    // On vérifie d'abord si l'utilisateur a configuré une URL manuelle, sinon on prend l'URL cachée
     return localStorage.getItem('google_script_url') || CLOUD_DATABASE_URL;
   });
 
@@ -68,10 +93,10 @@ const App: React.FC = () => {
 
   // SYNCHRONISATION AUTOMATIQUE AU DÉMARRAGE
   useEffect(() => {
-    if (googleScriptUrl && googleScriptUrl !== "https://script.google.com/macros/s/AKfycbwV4N_VOTRE_URL_REELLE_ICI/exec") {
-      pullFromCloud(true); // true = mode silencieux au démarrage
+    if (googleScriptUrl && !googleScriptUrl.includes("VOTRE_URL_REELLE_ICI")) {
+      pullFromCloud(true); 
     }
-  }, []);
+  }, [googleScriptUrl]);
 
   const handleUpdateCell = useCallback((name: string, day: number, status: string, comment?: string) => {
     if (!isAdmin) return;
@@ -132,42 +157,80 @@ const App: React.FC = () => {
     else { setPasswordError(true); }
   };
 
+  const handleAddMission = (e: React.FormEvent) => {
+    e.preventDefault();
+    const code = newMissionCode.trim().toUpperCase();
+    if (!code) return;
+    if (missionTypes.some(m => m.code === code)) {
+      alert("Ce code existe déjà.");
+      return;
+    }
+    const newMission: MissionType = {
+      code,
+      label: newMissionLabel.trim() || code,
+      bg: newMissionColor.bg,
+      text: newMissionColor.text,
+      isSystem: false
+    };
+    setMissionTypes([...missionTypes, newMission]);
+    setNewMissionCode("");
+    setNewMissionLabel("");
+  };
+
+  const handleDeleteMission = (code: string) => {
+    if (code === '') return; // Ne pas supprimer le vide
+    if (confirm(`Supprimer la mission ${code} ? Les données existantes dans le planning resteront mais n'auront plus de couleur.`)) {
+      setMissionTypes(missionTypes.filter(m => m.code !== code));
+    }
+  };
+
   // Google Sheets API Logic
   const pushToCloud = async () => {
-    if (!googleScriptUrl) return alert("URL Cloud manquante.");
+    if (!googleScriptUrl || googleScriptUrl.includes("VOTRE_URL_REELLE_ICI")) {
+      return alert("Erreur : L'URL du Cloud n'est pas configurée correctement dans le code.");
+    }
     setIsSyncing(true);
     try {
       const payload = { staffNames, missionTypes, scheduleData, lastSync: new Date().toISOString() };
-      await fetch(googleScriptUrl, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) });
+      await fetch(googleScriptUrl, { 
+        method: 'POST', 
+        mode: 'no-cors', 
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload) 
+      });
       setCloudStatus('success');
-      alert("Données sauvegardées sur le Cloud !");
+      alert("Données synchronisées avec succès !");
     } catch (error) {
       setCloudStatus('error');
-      alert("Erreur lors de l'envoi.");
+      alert("Erreur de connexion au Cloud. Vérifiez les permissions du script Google.");
     } finally {
       setIsSyncing(false);
     }
   };
 
   const pullFromCloud = async (silent = false) => {
-    if (!googleScriptUrl) return;
-    setIsSyncing(true);
+    if (!googleScriptUrl || googleScriptUrl.includes("VOTRE_URL_REELLE_ICI")) return;
+    if (!silent) setIsSyncing(true);
     try {
       const response = await fetch(googleScriptUrl);
+      if (!response.ok) throw new Error("Réponse réseau non OK");
       const json = await response.json();
-      if (json.staffNames && json.missionTypes && json.scheduleData) {
-        if (silent || confirm("Nouvelles données trouvées sur le Cloud. Charger ?")) {
-          setStaffNames(json.staffNames);
-          setMissionTypes(json.missionTypes);
-          setScheduleData(json.scheduleData);
+      if (json && json.scheduleData) {
+        if (silent || confirm("Nouvelles données trouvées sur le Cloud. Mettre à jour votre affichage ?")) {
+          if (json.staffNames) setStaffNames(json.staffNames);
+          if (json.missionTypes) setMissionTypes(json.missionTypes);
+          if (json.scheduleData) setScheduleData(json.scheduleData);
           setCloudStatus('success');
         }
       }
     } catch (error) {
+      console.error("Erreur Cloud:", error);
       setCloudStatus('error');
-      if (!silent) alert("Erreur de récupération.");
+      if (!silent) {
+        alert("Impossible de récupérer les données. Assurez-vous que le script Google est déployé avec l'accès 'Tous' (Anyone).");
+      }
     } finally {
-      setIsSyncing(false);
+      if (!silent) setIsSyncing(false);
     }
   };
 
@@ -197,15 +260,21 @@ const App: React.FC = () => {
     <div className="min-h-screen flex flex-col">
       <header className="bg-white border-b px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 sticky top-0 z-30 shadow-sm no-print">
         <div className="flex items-center gap-4">
-          <div className={`p-2 rounded-lg transition-colors ${isAdmin ? 'bg-indigo-600' : 'bg-slate-400'}`}>
+          <div className={`p-2 rounded-lg transition-all ${isAdmin ? 'bg-indigo-600 shadow-indigo-200' : 'bg-slate-400'} shadow-lg`}>
             <Cloud className={`text-white w-6 h-6 ${isSyncing ? 'animate-pulse' : ''}`} />
           </div>
           <div>
             <h1 className="text-xl font-bold text-gray-900 leading-none flex items-center gap-2">
               Planning Service
-              <span className={`text-[10px] px-2 py-0.5 rounded-full uppercase tracking-tighter ${isAdmin ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'}`}>
-                {isAdmin ? 'Admin' : 'Lecture'}
-              </span>
+              <div className="flex gap-1">
+                <span className={`text-[9px] px-2 py-0.5 rounded-full uppercase font-black ${isAdmin ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'}`}>
+                  {isAdmin ? 'Admin' : 'Lecture'}
+                </span>
+                <span className={`text-[9px] px-2 py-0.5 rounded-full uppercase font-black flex items-center gap-1 ${cloudStatus === 'success' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                  <div className={`w-1.5 h-1.5 rounded-full ${cloudStatus === 'success' ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'}`}></div>
+                  {cloudStatus === 'success' ? 'Connecté' : 'Erreur Cloud'}
+                </span>
+              </div>
             </h1>
           </div>
         </div>
@@ -213,9 +282,9 @@ const App: React.FC = () => {
         <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
           {isAdmin && (
             <>
-              <button onClick={() => setIsCloudModalOpen(true)} className="flex items-center gap-2 px-3 py-2 border rounded-lg bg-blue-50 text-blue-700 border-blue-200">
+              <button onClick={() => setIsCloudModalOpen(true)} className="flex items-center gap-2 px-3 py-2 border rounded-lg bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 transition-colors">
                 <Cloud size={18} />
-                <span className="hidden lg:inline">Cloud Auto</span>
+                <span className="hidden lg:inline font-bold">Base Cloud</span>
               </button>
               <button onClick={() => setIsDataModalOpen(true)} className="p-2 bg-slate-50 text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-100"><Save size={18} /></button>
               <button onClick={() => setIsMissionsModalOpen(true)} className="p-2 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg hover:bg-amber-100"><Settings2 size={18} /></button>
@@ -224,9 +293,9 @@ const App: React.FC = () => {
             </>
           )}
 
-          <button onClick={handleAdminToggle} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${isAdmin ? 'bg-slate-800 text-white hover:bg-slate-900' : 'bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100'}`}>
+          <button onClick={handleAdminToggle} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all ${isAdmin ? 'bg-slate-800 text-white hover:bg-slate-900' : 'bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100'}`}>
             {isAdmin ? <Lock size={18} /> : <Unlock size={18} />}
-            <span>{isAdmin ? "Admin" : "Mode Admin"}</span>
+            <span>{isAdmin ? "Quitter Admin" : "Mode Admin"}</span>
           </button>
 
           <div className="flex items-center bg-gray-100 rounded-lg p-1 mx-2">
@@ -248,12 +317,18 @@ const App: React.FC = () => {
           <div className="p-4 border-b bg-gray-50 flex items-center justify-between no-print">
             <h2 className="text-lg font-bold text-gray-800 uppercase tracking-wider">{getMonthName(currentMonth)} {currentYear}</h2>
             <div className="flex gap-2">
-              <button onClick={() => pullFromCloud(false)} className="text-[10px] bg-white border border-blue-200 text-blue-600 px-3 py-1.5 rounded-full font-bold flex items-center gap-1 hover:bg-blue-50 shadow-sm transition-all">
-                <RefreshCw size={12} className={isSyncing ? 'animate-spin' : ''}/> Sync Cloud
+              <button 
+                onClick={() => pullFromCloud(false)} 
+                className="text-[10px] bg-white border border-blue-200 text-blue-600 px-4 py-2 rounded-full font-black flex items-center gap-2 hover:bg-blue-50 shadow-sm transition-all active:scale-95"
+              >
+                <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''}/> ACTUALISER
               </button>
               {isAdmin && (
-                <button onClick={pushToCloud} className="text-[10px] bg-indigo-600 text-white px-3 py-1.5 rounded-full font-bold flex items-center gap-1 hover:bg-indigo-700 shadow-sm transition-all">
-                  <CloudUpload size={12}/> Publier modifications
+                <button 
+                  onClick={pushToCloud} 
+                  className="text-[10px] bg-indigo-600 text-white px-4 py-2 rounded-full font-black flex items-center gap-2 hover:bg-indigo-700 shadow-md transition-all active:scale-95"
+                >
+                  <CloudUpload size={14}/> PUBLIER LE PLANNING
                 </button>
               )}
             </div>
@@ -270,52 +345,43 @@ const App: React.FC = () => {
         </div>
       </main>
 
-      {/* MODAL CLOUD CONFIG SIMPLIFIÉ */}
+      {/* MODAL CLOUD CONFIG */}
       {isCloudModalOpen && isAdmin && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 animate-in zoom-in duration-200">
             <div className="flex justify-between items-center mb-6">
               <div className="flex items-center gap-2">
                 <Cloud className="text-blue-600" size={24}/>
-                <h3 className="text-xl font-bold">Base de données Partagée</h3>
+                <h3 className="text-xl font-bold">Synchronisation Cloud</h3>
               </div>
               <button onClick={() => setIsCloudModalOpen(false)} className="p-2 hover:bg-gray-100 rounded-full"><X size={20} /></button>
             </div>
             
             <div className="space-y-6">
-              <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100">
-                <label className="text-xs text-indigo-600 font-bold uppercase mb-2 block">Configuration de la connexion</label>
+              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
+                <label className="text-[10px] text-slate-500 font-black uppercase mb-2 block">Lien de la base de données</label>
                 <div className="flex gap-2">
                   <input 
                     type="text" 
                     value={googleScriptUrl} 
                     onChange={(e) => setGoogleScriptUrl(e.target.value)} 
-                    placeholder="URL du script Google..."
-                    className="flex-1 px-4 py-2 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-200 bg-white"
+                    placeholder="URL Google Apps Script..."
+                    className="flex-1 px-4 py-3 border rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-200 bg-white font-mono"
                   />
-                  <div className={`p-2 rounded-xl border bg-white ${cloudStatus === 'success' ? 'text-emerald-500' : 'text-gray-300'}`}>
-                    {cloudStatus === 'success' ? <CheckCircle2 size={18}/> : <Link size={18}/>}
+                  <div className={`p-3 rounded-xl border bg-white ${cloudStatus === 'success' ? 'text-emerald-500 border-emerald-200' : 'text-red-400 border-red-200'}`}>
+                    {cloudStatus === 'success' ? <CheckCircle2 size={20}/> : <AlertCircle size={20}/>}
                   </div>
                 </div>
-                <p className="text-[10px] text-indigo-400 mt-2 italic">L'application utilise l'URL configurée dans le code par défaut.</p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <button 
-                  onClick={pushToCloud} 
-                  className="flex flex-col items-center p-6 bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 transition-all shadow-md active:scale-95 group"
-                >
+                <button onClick={pushToCloud} className="flex flex-col items-center p-6 bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 transition-all shadow-lg active:scale-95 group">
                   <CloudUpload size={32} className="mb-2 group-hover:scale-110 transition-transform"/>
-                  <span className="font-bold text-sm">PUBLIER</span>
-                  <span className="text-[10px] opacity-70 text-center">Enregistrer vos changements pour tout le monde</span>
+                  <span className="font-black text-xs uppercase">Envoyer</span>
                 </button>
-                <button 
-                  onClick={() => pullFromCloud(false)} 
-                  className="flex flex-col items-center p-6 bg-emerald-600 text-white rounded-2xl hover:bg-emerald-700 transition-all shadow-md active:scale-95 group"
-                >
+                <button onClick={() => pullFromCloud(false)} className="flex flex-col items-center p-6 bg-emerald-600 text-white rounded-2xl hover:bg-emerald-700 transition-all shadow-lg active:scale-95 group">
                   <CloudDownload size={32} className="mb-2 group-hover:scale-110 transition-transform"/>
-                  <span className="font-bold text-sm">RÉCUPÉRER</span>
-                  <span className="text-[10px] opacity-70 text-center">Charger les changements des autres</span>
+                  <span className="font-black text-xs uppercase">Récupérer</span>
                 </button>
               </div>
             </div>
@@ -329,16 +395,15 @@ const App: React.FC = () => {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in duration-200">
             <div className="p-6 border-b flex justify-between items-center bg-indigo-50">
               <div>
-                <h3 className="text-xl font-bold text-indigo-900">Bilan Annuel {currentYear}</h3>
-                <p className="text-xs text-indigo-600">Cumul global des missions (Janvier à Décembre)</p>
+                <h3 className="text-xl font-bold text-indigo-900">Bilan Cumulé {currentYear}</h3>
               </div>
               <button onClick={() => setIsSummaryModalOpen(false)} className="p-2 hover:bg-white rounded-full transition-colors"><X size={20} /></button>
             </div>
             <div className="flex-1 overflow-auto p-6">
-              <table className="w-full text-left text-xs border-collapse">
+              <table className="w-full text-left text-[10px] border-collapse">
                 <thead className="bg-gray-100 border-b sticky top-0 z-10">
                   <tr>
-                    <th className="p-3 font-bold border">Personnel</th>
+                    <th className="p-3 font-bold border">Agent</th>
                     {missionTypes.filter(m => m.code !== '').map(m => (
                       <th key={m.code} className="p-3 text-center font-bold border">
                         <div className="flex flex-col items-center gap-1">
@@ -347,13 +412,13 @@ const App: React.FC = () => {
                         </div>
                       </th>
                     ))}
-                    <th className="p-3 text-center font-bold border-l-2 bg-indigo-100 text-indigo-900">TOTAL</th>
+                    <th className="p-3 text-center font-bold border-l-2 bg-indigo-100 text-indigo-900 uppercase">Service</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y border">
                   {personSummaries.map((s) => (
                     <tr key={s.name} className="hover:bg-indigo-50/30 transition-colors">
-                      <td className="p-3 font-bold border bg-gray-50/50">{s.name}</td>
+                      <td className="p-3 font-bold border bg-gray-50/50 uppercase">{s.name}</td>
                       {missionTypes.filter(m => m.code !== '').map(m => (
                         <td key={m.code} className={`p-3 text-center border font-medium ${s[m.code] > 0 ? 'text-gray-900' : 'text-gray-300'}`}>
                           {s[m.code] || '-'}
@@ -367,61 +432,131 @@ const App: React.FC = () => {
                 </tbody>
               </table>
             </div>
-            <div className="p-4 bg-gray-50 border-t flex justify-end">
-              <button onClick={() => window.print()} className="px-6 py-2 bg-white border border-gray-300 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-gray-100">
-                <Printer size={16}/> Imprimer le bilan annuel
+          </div>
+        </div>
+      )}
+
+      {/* MODAL MISSIONS AVEC CRÉATION/SUPPRESSION */}
+      {isMissionsModalOpen && isAdmin && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 animate-in slide-in-from-bottom duration-300">
+            <div className="flex justify-between items-center mb-6">
+              <div className="flex items-center gap-2 text-amber-600">
+                <Settings2 size={24}/>
+                <h3 className="text-xl font-bold">Gestion des Missions</h3>
+              </div>
+              <button onClick={() => setIsMissionsModalOpen(false)} className="p-2 hover:bg-gray-100 rounded-full"><X size={20} /></button>
+            </div>
+
+            {/* Formulaire d'ajout */}
+            <form onSubmit={handleAddMission} className="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-500 uppercase">Code (Max 4)</label>
+                  <input 
+                    maxLength={4}
+                    type="text" 
+                    value={newMissionCode} 
+                    onChange={(e) => setNewMissionCode(e.target.value)} 
+                    placeholder="Ex: FORM" 
+                    className="w-full px-3 py-2 border rounded-lg font-black uppercase text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-500 uppercase">Libellé</label>
+                  <input 
+                    type="text" 
+                    value={newMissionLabel} 
+                    onChange={(e) => setNewMissionLabel(e.target.value)} 
+                    placeholder="Formation" 
+                    className="w-full px-3 py-2 border rounded-lg text-sm"
+                  />
+                </div>
+              </div>
+              
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-500 uppercase">Couleur d'affichage</label>
+                <div className="flex flex-wrap gap-2 p-2 bg-white rounded-lg border">
+                  {PRESET_COLORS.map((c, i) => (
+                    <button 
+                      key={i}
+                      type="button"
+                      onClick={() => setNewMissionColor(c)}
+                      className={`w-6 h-6 rounded-md border-2 transition-transform hover:scale-110 ${c.bg} ${newMissionColor.bg === c.bg ? 'border-indigo-600 ring-2 ring-indigo-100' : 'border-gray-200'}`}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <button type="submit" className="w-full bg-amber-600 text-white py-3 rounded-xl font-black uppercase text-xs flex items-center justify-center gap-2 hover:bg-amber-700 shadow-md">
+                <Plus size={16}/> Ajouter la mission
               </button>
+            </form>
+
+            <div className="max-h-60 overflow-auto pr-1 space-y-2">
+              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Missions Actuelles</h4>
+              {missionTypes.filter(m => m.code !== '').map(m => (
+                <div key={m.code} className="flex items-center justify-between p-3 bg-white border rounded-xl hover:border-indigo-200 transition-colors group">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-8 rounded-lg border shadow-sm ${m.bg} flex items-center justify-center text-[10px] font-black uppercase ${m.text}`}>{m.code}</div>
+                    <div className="flex flex-col">
+                      <span className="text-xs font-bold text-slate-700">{m.label}</span>
+                      {m.isSystem && <span className="text-[8px] text-slate-400 uppercase font-black tracking-tighter">Système</span>}
+                    </div>
+                  </div>
+                  {!m.isSystem && (
+                    <button 
+                      onClick={() => handleDeleteMission(m.code)}
+                      className="p-2 text-slate-300 hover:text-red-600 transition-colors"
+                    >
+                      <Trash2 size={16}/>
+                    </button>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
         </div>
       )}
 
-      {/* Autres Modals (Password, Personnel, etc) */}
+      {/* Autres Modals (Password, Personnel, Data) */}
       {isPasswordModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
-            <h3 className="text-xl font-bold mb-6">Accès Admin</h3>
+            <h3 className="text-xl font-bold mb-6 text-center">Accès Administration</h3>
             <form onSubmit={verifyPassword} className="space-y-4">
-              <input autoFocus type="password" value={passwordInput} onChange={(e) => {setPasswordInput(e.target.value); setPasswordError(false);}} placeholder="Code secret" className={`w-full px-4 py-3 bg-gray-50 border ${passwordError ? 'border-red-500' : 'border-gray-200'} rounded-xl focus:outline-none text-center text-2xl tracking-[0.5em]`} />
-              <button type="submit" className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg">Déverrouiller</button>
+              <input autoFocus type="password" value={passwordInput} onChange={(e) => {setPasswordInput(e.target.value); setPasswordError(false);}} placeholder="••••••" className={`w-full px-4 py-3 bg-gray-50 border ${passwordError ? 'border-red-500 animate-shake' : 'border-gray-200'} rounded-xl focus:outline-none text-center text-2xl tracking-[0.5em]`} />
+              <button type="submit" className="w-full py-4 bg-indigo-600 text-white font-black rounded-xl shadow-lg hover:bg-indigo-700 transition-all uppercase tracking-widest">Déverrouiller</button>
             </form>
           </div>
         </div>
       )}
 
       {isStaffModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
-            <h3 className="text-xl font-bold mb-6">Gestion Personnel</h3>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 animate-in slide-in-from-bottom duration-300">
+            <div className="flex justify-between items-center mb-6">
+              <div className="flex items-center gap-2 text-indigo-600">
+                <Users size={24}/>
+                <h3 className="text-xl font-bold">Gestion du Personnel</h3>
+              </div>
+              <button onClick={() => setIsStaffModalOpen(false)} className="p-2 hover:bg-gray-100 rounded-full"><X size={20} /></button>
+            </div>
             <form onSubmit={(e) => { e.preventDefault(); const n = newStaffName.trim().toUpperCase(); if(n && !staffNames.includes(n)) { setStaffNames([...staffNames, n]); setNewStaffName(""); } }} className="flex gap-2 mb-6">
-              <input type="text" value={newStaffName} onChange={(e) => setNewStaffName(e.target.value)} placeholder="NOM" className="flex-1 px-4 py-2 bg-gray-50 border rounded-xl font-bold" />
-              <button type="submit" className="bg-indigo-600 text-white px-4 py-2 rounded-xl"><Plus/></button>
+              <input type="text" value={newStaffName} onChange={(e) => setNewStaffName(e.target.value)} placeholder="NOUVEL AGENT..." className="flex-1 px-4 py-3 bg-gray-50 border rounded-xl font-bold uppercase placeholder:normal-case focus:ring-2 focus:ring-indigo-100 outline-none transition-all" />
+              <button type="submit" className="bg-indigo-600 text-white px-4 py-2 rounded-xl shadow-md hover:bg-indigo-700 active:scale-95 transition-all"><Plus/></button>
             </form>
-            <div className="max-h-60 overflow-auto space-y-2">
+            <div className="max-h-60 overflow-auto space-y-2 pr-1">
+              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1 mb-2">Liste des Agents</h4>
               {staffNames.map(name => (
-                <div key={name} className="flex justify-between p-3 bg-gray-50 rounded-xl border">
-                  <span className="font-bold">{name}</span>
-                  <button onClick={() => setStaffNames(staffNames.filter(s => s !== name))} className="text-red-400 hover:text-red-600"><Trash2 size={16}/></button>
+                <div key={name} className="flex justify-between items-center p-3 bg-white border rounded-xl group hover:border-indigo-200 hover:bg-indigo-50/10 transition-all">
+                  <span className="font-black text-xs uppercase tracking-wider">{name}</span>
+                  <button onClick={() => setStaffNames(staffNames.filter(s => s !== name))} className="text-slate-300 hover:text-red-600 transition-colors p-1"><Trash2 size={16}/></button>
                 </div>
               ))}
             </div>
-          </div>
-        </div>
-      )}
-
-      {isMissionsModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
-            <h3 className="text-xl font-bold mb-6">Configuration Missions</h3>
-            <div className="space-y-2 max-h-96 overflow-auto">
-              {missionTypes.map(m => (
-                <div key={m.code} className="flex items-center justify-between p-2 bg-gray-50 rounded-xl border">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-8 h-6 rounded border ${m.bg} flex items-center justify-center text-[10px] font-bold`}>{m.code}</div>
-                    <span className="text-xs font-medium">{m.label}</span>
-                  </div>
-                </div>
-              ))}
+            <div className="mt-6 pt-4 border-t">
+               <button onClick={() => setIsStaffModalOpen(false)} className="w-full py-2 text-slate-400 text-[10px] font-black uppercase hover:text-slate-600 transition-colors">Fermer la fenêtre</button>
             </div>
           </div>
         </div>
@@ -429,17 +564,20 @@ const App: React.FC = () => {
 
       {isDataModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
-            <h3 className="text-xl font-bold mb-6">Sauvegarde Locale</h3>
-            <div className="grid gap-4">
-              <button onClick={() => {
-                const blob = new Blob([JSON.stringify({staffNames, missionTypes, scheduleData}, null, 2)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url; a.download = `backup_${currentYear}.json`; a.click();
-              }} className="flex items-center justify-center gap-2 bg-indigo-600 text-white py-3 rounded-xl font-bold"><Download size={18}/> Exporter Fichier</button>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center">
+            <div className="p-4 bg-amber-50 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-6">
+              <Download className="text-amber-600" size={40}/>
             </div>
-            <button onClick={() => setIsDataModalOpen(false)} className="mt-6 w-full text-center text-gray-400 text-sm">Fermer</button>
+            <h3 className="text-xl font-bold mb-2">Sauvegarde Manuelle</h3>
+            <button onClick={() => {
+              const blob = new Blob([JSON.stringify({staffNames, missionTypes, scheduleData}, null, 2)], { type: 'application/json' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url; a.download = `planning_backup_${currentYear}.json`; a.click();
+            }} className="w-full flex items-center justify-center gap-3 bg-indigo-600 text-white py-4 rounded-xl font-black uppercase tracking-widest shadow-lg hover:bg-indigo-700 transition-all">
+              <Download size={20}/> Télécharger JSON
+            </button>
+            <button onClick={() => setIsDataModalOpen(false)} className="mt-6 text-slate-400 text-[10px] font-bold uppercase hover:text-slate-600">Fermer</button>
           </div>
         </div>
       )}
