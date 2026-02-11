@@ -15,7 +15,7 @@ import {
 // CONFIGURATION CACHÉE
 // REMPLACEZ L'URL CI-DESSOUS PAR VOTRE URL GOOGLE APPS SCRIPT RÉELLE
 // ==========================================
-const CLOUD_DATABASE_URL = "https://script.google.com/macros/s/AKfycbwV4N_VOTRE_URL_REELLE_ICI/exec";
+const CLOUD_DATABASE_URL = "https://script.google.com/macros/s/AKfycbzxbs8PkS0FWNOijViL0-uNQfdhZDDubixKwkFm4x4ahx9URy8AlemtkhQ1WdSit92W-w/exec";
 const ADMIN_PASSWORD = "270478";
 
 const PRESET_COLORS = [
