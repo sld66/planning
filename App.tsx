@@ -11,6 +11,11 @@ import {
   Cloud, CloudUpload, CloudDownload, Link, CheckCircle2, AlertCircle 
 } from 'lucide-react';
 
+// ==========================================
+// CONFIGURATION CACHÉE
+// REMPLACEZ L'URL CI-DESSOUS PAR VOTRE URL GOOGLE APPS SCRIPT
+// ==========================================
+const CLOUD_DATABASE_URL = "https://script.google.com/macros/s/AKfycbwV4N_VOTRE_URL_REELLE_ICI/exec";
 const ADMIN_PASSWORD = "270478";
 
 const App: React.FC = () => {
@@ -50,7 +55,8 @@ const App: React.FC = () => {
   });
 
   const [googleScriptUrl, setGoogleScriptUrl] = useState<string>(() => {
-    return localStorage.getItem('google_script_url') || "";
+    // On vérifie d'abord si l'utilisateur a configuré une URL manuelle, sinon on prend l'URL cachée
+    return localStorage.getItem('google_script_url') || CLOUD_DATABASE_URL;
   });
 
   // Persistance Locale
@@ -59,6 +65,13 @@ const App: React.FC = () => {
   useEffect(() => localStorage.setItem('staff_names', JSON.stringify(staffNames)), [staffNames]);
   useEffect(() => localStorage.setItem('mission_types', JSON.stringify(missionTypes)), [missionTypes]);
   useEffect(() => localStorage.setItem('google_script_url', googleScriptUrl), [googleScriptUrl]);
+
+  // SYNCHRONISATION AUTOMATIQUE AU DÉMARRAGE
+  useEffect(() => {
+    if (googleScriptUrl && googleScriptUrl !== "https://script.google.com/macros/s/AKfycbwV4N_VOTRE_URL_REELLE_ICI/exec") {
+      pullFromCloud(true); // true = mode silencieux au démarrage
+    }
+  }, []);
 
   const handleUpdateCell = useCallback((name: string, day: number, status: string, comment?: string) => {
     if (!isAdmin) return;
@@ -120,29 +133,14 @@ const App: React.FC = () => {
   };
 
   // Google Sheets API Logic
-  const testCloudConnection = async () => {
-    if (!googleScriptUrl) return;
-    setIsSyncing(true);
-    setCloudStatus('idle');
-    try {
-      const response = await fetch(googleScriptUrl);
-      if (response.ok) setCloudStatus('success');
-      else setCloudStatus('error');
-    } catch (e) {
-      setCloudStatus('error');
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
   const pushToCloud = async () => {
-    if (!googleScriptUrl) return alert("Configurez d'abord l'URL Cloud.");
+    if (!googleScriptUrl) return alert("URL Cloud manquante.");
     setIsSyncing(true);
     try {
       const payload = { staffNames, missionTypes, scheduleData, lastSync: new Date().toISOString() };
       await fetch(googleScriptUrl, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) });
       setCloudStatus('success');
-      alert("Données sauvegardées sur Google Sheets !");
+      alert("Données sauvegardées sur le Cloud !");
     } catch (error) {
       setCloudStatus('error');
       alert("Erreur lors de l'envoi.");
@@ -151,25 +149,23 @@ const App: React.FC = () => {
     }
   };
 
-  const pullFromCloud = async () => {
-    if (!googleScriptUrl) return alert("Configurez d'abord l'URL Cloud.");
+  const pullFromCloud = async (silent = false) => {
+    if (!googleScriptUrl) return;
     setIsSyncing(true);
     try {
       const response = await fetch(googleScriptUrl);
       const json = await response.json();
       if (json.staffNames && json.missionTypes && json.scheduleData) {
-        if (confirm("Charger les données du Cloud ? Cela écrasera vos modifications locales.")) {
+        if (silent || confirm("Nouvelles données trouvées sur le Cloud. Charger ?")) {
           setStaffNames(json.staffNames);
           setMissionTypes(json.missionTypes);
           setScheduleData(json.scheduleData);
           setCloudStatus('success');
         }
-      } else {
-        alert("Données cloud invalides.");
       }
     } catch (error) {
       setCloudStatus('error');
-      alert("Erreur de récupération.");
+      if (!silent) alert("Erreur de récupération.");
     } finally {
       setIsSyncing(false);
     }
@@ -202,7 +198,7 @@ const App: React.FC = () => {
       <header className="bg-white border-b px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 sticky top-0 z-30 shadow-sm no-print">
         <div className="flex items-center gap-4">
           <div className={`p-2 rounded-lg transition-colors ${isAdmin ? 'bg-indigo-600' : 'bg-slate-400'}`}>
-            <RefreshCw className={`text-white w-6 h-6 ${isSyncing ? 'animate-spin' : ''}`} />
+            <Cloud className={`text-white w-6 h-6 ${isSyncing ? 'animate-pulse' : ''}`} />
           </div>
           <div>
             <h1 className="text-xl font-bold text-gray-900 leading-none flex items-center gap-2">
@@ -217,9 +213,9 @@ const App: React.FC = () => {
         <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
           {isAdmin && (
             <>
-              <button onClick={() => setIsCloudModalOpen(true)} className={`flex items-center gap-2 px-3 py-2 border rounded-lg transition-colors font-medium ${googleScriptUrl ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-slate-50 text-slate-400'}`}>
+              <button onClick={() => setIsCloudModalOpen(true)} className="flex items-center gap-2 px-3 py-2 border rounded-lg bg-blue-50 text-blue-700 border-blue-200">
                 <Cloud size={18} />
-                <span className="hidden lg:inline">Cloud Sheet</span>
+                <span className="hidden lg:inline">Cloud Auto</span>
               </button>
               <button onClick={() => setIsDataModalOpen(true)} className="p-2 bg-slate-50 text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-100"><Save size={18} /></button>
               <button onClick={() => setIsMissionsModalOpen(true)} className="p-2 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg hover:bg-amber-100"><Settings2 size={18} /></button>
@@ -251,7 +247,16 @@ const App: React.FC = () => {
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="p-4 border-b bg-gray-50 flex items-center justify-between no-print">
             <h2 className="text-lg font-bold text-gray-800 uppercase tracking-wider">{getMonthName(currentMonth)} {currentYear}</h2>
-            {googleScriptUrl && <button onClick={pullFromCloud} className="text-[10px] bg-blue-600 text-white px-3 py-1.5 rounded-full font-bold flex items-center gap-1 hover:bg-blue-700 shadow-sm"><RefreshCw size={12} className={isSyncing ? 'animate-spin' : ''}/> Rafraîchir Cloud</button>}
+            <div className="flex gap-2">
+              <button onClick={() => pullFromCloud(false)} className="text-[10px] bg-white border border-blue-200 text-blue-600 px-3 py-1.5 rounded-full font-bold flex items-center gap-1 hover:bg-blue-50 shadow-sm transition-all">
+                <RefreshCw size={12} className={isSyncing ? 'animate-spin' : ''}/> Sync Cloud
+              </button>
+              {isAdmin && (
+                <button onClick={pushToCloud} className="text-[10px] bg-indigo-600 text-white px-3 py-1.5 rounded-full font-bold flex items-center gap-1 hover:bg-indigo-700 shadow-sm transition-all">
+                  <CloudUpload size={12}/> Publier modifications
+                </button>
+              )}
+            </div>
           </div>
           
           <ScheduleGrid 
@@ -265,38 +270,34 @@ const App: React.FC = () => {
         </div>
       </main>
 
-      {/* MODAL CLOUD CONFIG */}
+      {/* MODAL CLOUD CONFIG SIMPLIFIÉ */}
       {isCloudModalOpen && isAdmin && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 animate-in zoom-in duration-200">
             <div className="flex justify-between items-center mb-6">
               <div className="flex items-center gap-2">
                 <Cloud className="text-blue-600" size={24}/>
-                <h3 className="text-xl font-bold">Base de données Google Sheet</h3>
+                <h3 className="text-xl font-bold">Base de données Partagée</h3>
               </div>
               <button onClick={() => setIsCloudModalOpen(false)} className="p-2 hover:bg-gray-100 rounded-full"><X size={20} /></button>
             </div>
             
             <div className="space-y-6">
-              <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
-                <label className="text-xs text-blue-600 font-bold uppercase mb-2 block">URL Google Apps Script</label>
+              <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100">
+                <label className="text-xs text-indigo-600 font-bold uppercase mb-2 block">Configuration de la connexion</label>
                 <div className="flex gap-2">
                   <input 
                     type="text" 
                     value={googleScriptUrl} 
-                    onChange={(e) => { setGoogleScriptUrl(e.target.value); setCloudStatus('idle'); }} 
-                    placeholder="https://script.google.com/macros/s/..."
-                    className="flex-1 px-4 py-2 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-200 bg-white"
+                    onChange={(e) => setGoogleScriptUrl(e.target.value)} 
+                    placeholder="URL du script Google..."
+                    className="flex-1 px-4 py-2 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-200 bg-white"
                   />
-                  <button 
-                    onClick={testCloudConnection}
-                    className={`p-2 rounded-xl transition-all ${cloudStatus === 'success' ? 'bg-emerald-100 text-emerald-600' : 'bg-white border text-blue-600 hover:bg-blue-50'}`}
-                  >
-                    {isSyncing ? <RefreshCw size={18} className="animate-spin" /> : cloudStatus === 'success' ? <CheckCircle2 size={18}/> : cloudStatus === 'error' ? <AlertCircle size={18}/> : <Link size={18}/>}
-                  </button>
+                  <div className={`p-2 rounded-xl border bg-white ${cloudStatus === 'success' ? 'text-emerald-500' : 'text-gray-300'}`}>
+                    {cloudStatus === 'success' ? <CheckCircle2 size={18}/> : <Link size={18}/>}
+                  </div>
                 </div>
-                {cloudStatus === 'success' && <p className="text-[10px] text-emerald-600 font-bold mt-2">Connexion établie avec succès !</p>}
-                {cloudStatus === 'error' && <p className="text-[10px] text-red-500 font-bold mt-2">Échec de la connexion. Vérifiez l'URL.</p>}
+                <p className="text-[10px] text-indigo-400 mt-2 italic">L'application utilise l'URL configurée dans le code par défaut.</p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -305,26 +306,18 @@ const App: React.FC = () => {
                   className="flex flex-col items-center p-6 bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 transition-all shadow-md active:scale-95 group"
                 >
                   <CloudUpload size={32} className="mb-2 group-hover:scale-110 transition-transform"/>
-                  <span className="font-bold text-sm">ENVOYER</span>
-                  <span className="text-[10px] opacity-70">Enregistrer vers Cloud</span>
+                  <span className="font-bold text-sm">PUBLIER</span>
+                  <span className="text-[10px] opacity-70 text-center">Enregistrer vos changements pour tout le monde</span>
                 </button>
                 <button 
-                  onClick={pullFromCloud} 
+                  onClick={() => pullFromCloud(false)} 
                   className="flex flex-col items-center p-6 bg-emerald-600 text-white rounded-2xl hover:bg-emerald-700 transition-all shadow-md active:scale-95 group"
                 >
                   <CloudDownload size={32} className="mb-2 group-hover:scale-110 transition-transform"/>
                   <span className="font-bold text-sm">RÉCUPÉRER</span>
-                  <span className="text-[10px] opacity-70">Charger depuis Cloud</span>
+                  <span className="text-[10px] opacity-70 text-center">Charger les changements des autres</span>
                 </button>
               </div>
-            </div>
-            
-            <div className="mt-8 p-4 bg-gray-50 rounded-xl">
-              <h5 className="text-xs font-bold text-gray-500 uppercase mb-2">Comment ça marche ?</h5>
-              <p className="text-[10px] text-gray-400 leading-relaxed">
-                Une fois configurée, cette URL permet à tous les PC d'utiliser la même base de données. 
-                Utilisez "RÉCUPÉRER" au démarrage pour avoir les dernières données, et "ENVOYER" après chaque modification.
-              </p>
             </div>
           </div>
         </div>
@@ -336,8 +329,8 @@ const App: React.FC = () => {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in duration-200">
             <div className="p-6 border-b flex justify-between items-center bg-indigo-50">
               <div>
-                <h3 className="text-xl font-bold text-indigo-900">Statistiques Annuelles - {currentYear}</h3>
-                <p className="text-xs text-indigo-600">Total cumulé de Janvier à Décembre</p>
+                <h3 className="text-xl font-bold text-indigo-900">Bilan Annuel {currentYear}</h3>
+                <p className="text-xs text-indigo-600">Cumul global des missions (Janvier à Décembre)</p>
               </div>
               <button onClick={() => setIsSummaryModalOpen(false)} className="p-2 hover:bg-white rounded-full transition-colors"><X size={20} /></button>
             </div>
@@ -354,7 +347,7 @@ const App: React.FC = () => {
                         </div>
                       </th>
                     ))}
-                    <th className="p-3 text-center font-bold border-l-2 bg-indigo-100 text-indigo-900">CUMUL SERVICE</th>
+                    <th className="p-3 text-center font-bold border-l-2 bg-indigo-100 text-indigo-900">TOTAL</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y border">
@@ -383,7 +376,7 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Modals de support (Password, Personnel, Missions, Data) */}
+      {/* Autres Modals (Password, Personnel, etc) */}
       {isPasswordModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
